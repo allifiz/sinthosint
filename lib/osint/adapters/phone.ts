@@ -1,0 +1,36 @@
+import type { Adapter } from "../types";
+import { searchWeb } from "../search";
+import { extractFromText, extractFromUrl } from "../extractor";
+
+const PREFIX: Record<string, string> = {
+  "0811":"Telkomsel","0812":"Telkomsel","0813":"Telkomsel","0821":"Telkomsel","0822":"Telkomsel","0823":"Telkomsel","0852":"Telkomsel","0853":"Telkomsel",
+  "0856":"Indosat","0857":"Indosat","0858":"Indosat","0814":"Indosat","0815":"Indosat","0816":"Indosat",
+  "0817":"XL","0818":"XL","0819":"XL","0877":"XL","0878":"XL","0879":"XL",
+  "0895":"Tri","0896":"Tri","0897":"Tri","0898":"Tri","0899":"Tri",
+  "0881":"Smartfren","0882":"Smartfren","0883":"Smartfren","0884":"Smartfren","0885":"Smartfren","0886":"Smartfren","0887":"Smartfren","0888":"Smartfren","0889":"Smartfren"
+};
+
+export const indonesiaPhoneAdapter: Adapter = {
+  name: "Indonesia Phone OSINT v5-style",
+  supports: ["phone"],
+  async search(entity) {
+    const local = entity.normalized;
+    const intl = local.startsWith("0") ? `+62${local.slice(1)}` : local;
+    const plainIntl = intl.replace(/^\+/, "");
+    const provider = PREFIX[local.slice(0, 4)] || "Unknown";
+    const queries = [`"${local}"`, `"${intl}"`, `"${plainIntl}"`];
+    const searched = await Promise.allSettled(queries.map(searchWeb));
+    const hits = searched.flatMap((x) => (x.status === "fulfilled" ? x.value : []));
+    const seen = new Set<string>();
+    const entities = [] as ReturnType<typeof extractFromText>;
+    const findings = [{ title: `Provider prefix: ${provider}`, url: "", snippet: `${local} normalized as ${intl}`, source: "Indonesia Phone Prefix" }];
+    for (const hit of hits) {
+      if (seen.has(hit.url)) continue;
+      seen.add(hit.url);
+      entities.push(...extractFromText(`${hit.title} ${hit.snippet}`, `indo-phone:${hit.engine}`));
+      entities.push(...extractFromUrl(hit.url, `indo-phone:${hit.engine}`));
+      findings.push({ title: hit.title || hit.url, url: hit.url, snippet: hit.snippet, source: `Phone Search/${hit.engine}` });
+    }
+    return { entities, findings };
+  },
+};
