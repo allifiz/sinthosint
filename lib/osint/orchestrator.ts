@@ -14,7 +14,7 @@ function id(prefix: string) {
   return `${prefix}_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
 }
 
-export async function investigate(input: string, maxDepth = 2, maxEntities = 40): Promise<InvestigationResult> {
+export async function investigate(input: string, maxDepth = 2, maxEntities = 120): Promise<InvestigationResult> {
   const started = Date.now();
   const seedClass = classify(input);
   const seed: Entity = { id: id("ent"), ...seedClass, source: "user", confidence: 100, depth: 0 };
@@ -38,7 +38,10 @@ export async function investigate(input: string, maxDepth = 2, maxEntities = 40)
       let result;
       try { result = await adapter.search(current); } catch { continue; }
 
-      for (const f of result.findings) findings.push({ id: id("find"), entityId: current.id, ...f });
+      for (const f of result.findings) {
+        if (findings.length >= 400) break;
+        findings.push({ id: id("find"), entityId: current.id, ...f });
+      }
 
       const candidates = dedupeCandidates(result.entities, current);
       for (const candidate of candidates) {
@@ -65,7 +68,7 @@ export async function investigate(input: string, maxDepth = 2, maxEntities = 40)
     seed,
     entities,
     relations,
-    findings: findings.slice(0, 100),
+    findings: findings.slice(0, 400),
     stats: { visited: visited.size, durationMs: Date.now() - started, adapters: [...usedAdapters] },
   };
 }
