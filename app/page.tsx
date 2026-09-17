@@ -37,11 +37,11 @@ export default function Home() {
     <main>
       <section className="hero">
         <div className="orb orb-a" /><div className="orb orb-b" />
-        <nav><div className="brand"><span className="brand-mark"><Network size={18} /></span>Sinth<span>OSINT</span></div><div className="nav-pill"><CircleDot size={13} /> Indonesia-first · deep entity pivots</div></nav>
+        <nav><div className="brand"><span className="brand-mark"><Network size={18} /></span>Sinth<span>OSINT</span></div><div className="nav-pill"><CircleDot size={13} /> 3 engines · recursive pivots</div></nav>
         <div className="hero-copy">
-          <div className="eyebrow"><Sparkles size={14}/> DEEP PIVOT ENGINE FOR PUBLIC-SOURCE INTELLIGENCE</div>
+          <div className="eyebrow"><Sparkles size={14}/> MAIGRET × OSINT IN INDONESIA × INDONESIA V5</div>
           <h1>Start with one clue.<br/><span>Let every finding branch.</span></h1>
-          <p>Username dipindai memakai database rule Maigret, nama dan nomor dipivot lewat pencarian Indonesia, dan domain diperluas ke DNS, certificate transparency, RDAP, Wayback, serta metadata web.</p>
+          <p>SinthOSINT mengorkestrasi tiga pendekatan: database rule Maigret untuk username, source packs Indonesia untuk nama dan jejak lokal, serta pola PhoneInfoga-lite + Google/Bing/DuckDuckGo dari Indonesia v5 untuk nomor +62.</p>
         </div>
         <form className="search-card" onSubmit={submit}>
           <Search size={21}/><input autoFocus value={query} onChange={(e)=>setQuery(e.target.value)} placeholder='username, "nama lengkap", +62…, email, domain…'/>
@@ -50,15 +50,15 @@ export default function Home() {
         </form>
         <div className="examples">Try <span>→</span>{examples.map((x)=><button key={x} onClick={()=>setQuery(x)}>{x}</button>)}</div>
         <div className="method-row">
-          <div><strong>USERNAME</strong><span>Maigret DB-backed scan across hundreds of site rules</span></div>
-          <div><strong>NAME</strong><span>16 Indonesia-oriented social, official, education & business pivots</span></div>
-          <div><strong>+62 PHONE</strong><span>Number variants, provider inference & targeted indexed contexts</span></div>
-          <div><strong>DOMAIN</strong><span>DNS, CT, RDAP, Wayback & HTTP metadata</span></div>
+          <div><strong>MAIGRET ENGINE</strong><span>DB-backed username scan across hundreds of upstream site rules</span></div>
+          <div><strong>OSINT IN INDONESIA</strong><span>30 source queries across social, government, education, business, media & documents</span></div>
+          <div><strong>INDONESIA V5</strong><span>+62 normalization, operator inference and Google/Bing/DDG phone dorking</span></div>
+          <div><strong>WEB INTEL</strong><span>DNS, CT, RDAP, Wayback & HTTP metadata for discovered domains</span></div>
         </div>
       </section>
 
       {error && <section className="status error">{error}</section>}
-      {loading && <section className="status"><div className="scanner"/><p>Scanning hundreds of profile rules, collecting public traces, then recursively pivoting discovered entities…</p></section>}
+      {loading && <section className="status"><div className="scanner"/><p>Running toolkit-specific scans, extracting entities, then recursively dispatching each new clue to the matching engine…</p></section>}
 
       {result && <section className="results">
         <div className="summary-grid">
@@ -68,7 +68,7 @@ export default function Home() {
           <div className="summary-card"><span>Runtime</span><strong>{(result.stats.durationMs/1000).toFixed(1)}s</strong><em>{result.stats.visited} entities visited</em></div>
         </div>
 
-        <div className="section-head"><div><span>RELATIONSHIP MAP</span><h2>Entity graph</h2></div><p>A profile can yield a display name, email, phone, domain or another username; each becomes a new pivot automatically.</p></div>
+        <div className="section-head"><div><span>RELATIONSHIP MAP</span><h2>Entity graph</h2></div><p>Username → display name → Indonesia source packs → phone → Indonesia v5 → domain/web intel. New entities are queued automatically.</p></div>
         <InvestigationGraph entities={result.entities} relations={result.relations}/>
 
         <div className="content-grid">
@@ -83,7 +83,7 @@ export default function Home() {
         </div>
       </section>}
 
-      <footer><ShieldCheck size={15}/> Deep public-source correlation. Confidence is evidence weight, not identity proof.</footer>
+      <footer><ShieldCheck size={15}/> Public-source correlation only. Confidence is evidence weight, not identity proof.</footer>
     </main>
   );
 }
