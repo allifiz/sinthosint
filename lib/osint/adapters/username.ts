@@ -75,6 +75,22 @@ function normalizeHtml(s: string) {
   return s.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;|&amp;|&#39;|&quot;/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function displayNameCandidate(title: string, siteName: string, username: string) {
+  if (!title) return null;
+  let value = title
+    .replace(new RegExp(`@?${username.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "ig"), " ")
+    .replace(new RegExp(siteName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "ig"), " ")
+    .replace(/\b(profile|user|account|official|homepage|home|posts?|photos?|videos?)\b/ig, " ")
+    .replace(/[|•·—–:\-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  value = value.split(/\s{2,}|\(|\[/)[0]?.trim() || value;
+  const words = value.split(/\s+/).filter(Boolean);
+  if (words.length < 2 || words.length > 6 || value.length < 5 || value.length > 80) return null;
+  if (!words.every((w) => /^[\p{L}.'’-]+$/u.test(w))) return null;
+  return value;
+}
+
 async function probe(entry: SiteEntry, entity: Entity): Promise<AdapterResult | null> {
   const { name, site } = entry;
   if (!site.url || !validForSite(entity.normalized, site.regexCheck)) return null;
@@ -94,12 +110,8 @@ async function probe(entry: SiteEntry, entity: Entity): Promise<AdapterResult | 
     let exists = false;
 
     switch (site.checkType) {
-      case "status_code":
-        exists = res.status >= 200 && res.status < 400;
-        break;
-      case "response_url":
-        exists = res.ok && !absent.some((s) => res.url.toLowerCase().includes(s.toLowerCase()) || lower.includes(s.toLowerCase()));
-        break;
+      case "status_code": exists = res.status >= 200 && res.status < 400; break;
+      case "response_url": exists = res.ok && !absent.some((s) => res.url.toLowerCase().includes(s.toLowerCase()) || lower.includes(s.toLowerCase())); break;
       case "message":
       default:
         if (absent.some((s) => lower.includes(s.toLowerCase()))) exists = false;
@@ -115,22 +127,15 @@ async function probe(entry: SiteEntry, entity: Entity): Promise<AdapterResult | 
     const desc = normalizeHtml(descRaw).slice(0, 420);
     const sample = normalizeHtml(`${titleRaw} ${descRaw} ${body.slice(0, 16000)}`).slice(0, 18000);
     const source = `Maigret DB/${name}`;
+    const extracted = [...extractFromText(sample, source), ...extractFromUrl(profileUrl, source)];
+    const displayName = displayNameCandidate(title, name, entity.normalized);
+    if (displayName) extracted.push({ type: "name", value: displayName, normalized: displayName.toLowerCase(), source, confidence: 56, metadata: { profileUrl, platform: name } });
 
     return {
-      entities: [
-        ...extractFromText(sample, source),
-        ...extractFromUrl(profileUrl, source),
-      ],
-      findings: [{
-        title: title || `${name}: @${entity.normalized}`,
-        url: profileUrl,
-        snippet: desc || `Username ${entity.normalized} matched Maigret checks on ${name}.`,
-        source,
-      }],
+      entities: extracted,
+      findings: [{ title: title || `${name}: @${entity.normalized}`, url: profileUrl, snippet: desc || `Username ${entity.normalized} matched Maigret checks on ${name}.`, source }],
     };
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 async function pooled<T, R>(items: T[], limit: number, worker: (item: T) => Promise<R>) {
@@ -159,7 +164,7 @@ export const usernameAdapter: Adapter = {
     return {
       entities: matched.flatMap((x) => x.entities),
       findings: [
-        { title: `Maigret coverage: ${scanned.length} sites checked`, url: MAIGRET_DB, snippet: `${matched.length} possible public profiles matched the upstream Maigret site rules.`, source: "Maigret DB" },
+        { title: `Maigret coverage: ${scanned.length} sites checked`, url: MAIGRET_DB, snippet: `${matched.length} possible public profiles matched the upstream Maigret site rules. Display names, phones, emails and linked domains are automatically queued for pivoting.`, source: "Maigret DB" },
         ...matched.flatMap((x) => x.findings),
       ],
     };
