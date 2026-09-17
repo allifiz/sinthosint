@@ -25,12 +25,32 @@ export default function Home() {
     if (!query.trim()) return;
     setLoading(true); setError(""); setResult(null);
     try {
-      const res = await fetch("/api/investigate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query, maxDepth: depth }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Investigation failed");
+      const res = await fetch("/api/investigate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query, maxDepth: depth }),
+      });
+
+      const raw = await res.text();
+      let data: InvestigationResult | { error?: string } | null = null;
+      try { data = raw ? JSON.parse(raw) : null; } catch {
+        if (res.status === 504) {
+          throw new Error("Deep scan melewati batas runtime Vercel. Coba lagi setelah deployment patch terbaru selesai, atau gunakan Depth 1 sementara.");
+        }
+        throw new Error(`Server mengembalikan respons non-JSON (${res.status}). ${raw.slice(0, 160) || "Tidak ada detail."}`);
+      }
+
+      if (!res.ok) {
+        const message = data && "error" in data ? data.error : undefined;
+        throw new Error(message || `Investigation failed (${res.status})`);
+      }
+      if (!data || !("seed" in data)) throw new Error("Respons investigation tidak lengkap.");
       setResult(data);
-    } catch (err) { setError(err instanceof Error ? err.message : "Investigation failed"); }
-    finally { setLoading(false); }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Investigation failed");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
