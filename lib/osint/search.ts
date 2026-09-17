@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 
 const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/142 Safari/537.36";
+const SEARCH_TIMEOUT_MS = 4500;
 export type SearchHit = { title: string; url: string; snippet: string; engine: string };
 
 function cleanDuckUrl(href: string) {
@@ -23,15 +24,14 @@ function cleanGoogleUrl(href: string) {
   } catch { return href; }
 }
 
-async function retryFetch(url: string, init: RequestInit, attempts = 2) {
+async function retryFetch(url: string, init: RequestInit, attempts = 1) {
   let last: Response | null = null;
   for (let i = 0; i < attempts; i++) {
     try {
-      const res = await fetch(url, { ...init, cache: "no-store", signal: AbortSignal.timeout(9000) });
+      const res = await fetch(url, { ...init, cache: "no-store", signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS) });
       last = res;
       if (res.ok || ![429, 500, 502, 503, 504].includes(res.status)) return res;
     } catch {}
-    if (i + 1 < attempts) await new Promise((r) => setTimeout(r, 450 * (i + 1)));
   }
   return last;
 }
@@ -48,7 +48,8 @@ async function google(query: string): Promise<SearchHit[]> {
     const href = a.attr("href");
     if (!href || !h3.length) return;
     const cleaned = cleanGoogleUrl(href);
-    if (!/^https?:\/\//.test(cleaned) || /google\./i.test(new URL(cleaned).hostname)) return;
+    if (!/^https?:\/\//.test(cleaned)) return;
+    try { if (/google\./i.test(new URL(cleaned).hostname)) return; } catch { return; }
     const container = a.closest("div");
     const snippet = container.parent().text().replace(/\s+/g, " ").trim().slice(0, 500);
     hits.push({ title: h3.text().trim(), url: cleaned, snippet, engine: "Google" });
