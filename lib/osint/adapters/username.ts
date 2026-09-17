@@ -1,44 +1,167 @@
 import type { Adapter, AdapterResult, Entity } from "../types";
 import { extractFromText, extractFromUrl } from "../extractor";
 
-const SITES = [
-  { name: "GitHub", url: (u: string) => `https://github.com/${u}`, missing: ["not found"] },
-  { name: "Reddit", url: (u: string) => `https://www.reddit.com/user/${u}/`, missing: ["page not found", "nobody on reddit goes by that name"] },
-  { name: "Dev.to", url: (u: string) => `https://dev.to/${u}`, missing: ["page not found"] },
-  { name: "Medium", url: (u: string) => `https://medium.com/@${u}`, missing: ["page not found"] },
-  { name: "Pinterest", url: (u: string) => `https://www.pinterest.com/${u}/`, missing: ["couldn't find"] },
-  { name: "TikTok", url: (u: string) => `https://www.tiktok.com/@${u}`, missing: ["couldn't find this account"] },
-  { name: "Instagram", url: (u: string) => `https://www.instagram.com/${u}/`, missing: ["page isn't available"] },
-  { name: "X", url: (u: string) => `https://x.com/${u}`, missing: ["this account doesn’t exist", "this account doesn't exist"] },
-];
+const UA = "Mozilla/5.0 (compatible; SinthOSINT/0.2; +https://github.com/allifiz/sinthosint)";
+const MAIGRET_DB = "https://raw.githubusercontent.com/soxoj/maigret/main/maigret/resources/data.json";
+const SITE_LIMIT = 320;
+const CONCURRENCY = 36;
+const SAFE_HEADERS = new Set(["accept", "accept-language", "referer", "user-agent", "x-ig-app-id"]);
 
-const UA = "Mozilla/5.0 (compatible; SinthOSINT/0.1)";
+type MaigretSite = {
+  url?: string;
+  urlProbe?: string;
+  checkType?: string;
+  presenseStrs?: string[];
+  absenceStrs?: string[];
+  regexCheck?: string;
+  disabled?: boolean;
+  type?: string;
+  alexaRank?: number;
+  headers?: Record<string, string>;
+  tags?: string[];
+};
 
-async function probe(name: string, url: string, missing: string[], entity: Entity): Promise<AdapterResult | null> {
+type MaigretDb = { sites?: Record<string, MaigretSite> };
+type SiteEntry = { name: string; site: MaigretSite };
+
+let dbPromise: Promise<SiteEntry[]> | null = null;
+
+function safeHeaders(input?: Record<string, string>) {
+  const out: Record<string, string> = { "user-agent": UA, accept: "text/html,application/xhtml+xml,application/json;q=0.8,*/*;q=0.5" };
+  for (const [key, value] of Object.entries(input || {})) {
+    const lower = key.toLowerCase();
+    if (SAFE_HEADERS.has(lower) && value && value.length < 500) out[lower] = value;
+  }
+  return out;
+}
+
+function isUsernameSite(site: MaigretSite) {
+  if (site.disabled || !site.url) return false;
+  if (site.type && !["username", "user"].includes(site.type.toLowerCase())) return false;
+  if (site.regexCheck) {
+    try { new RegExp(site.regexCheck); } catch { return false; }
+  }
+  return [undefined, "message", "status_code", "response_url"].includes(site.checkType);
+}
+
+async function loadSites() {
+  if (!dbPromise) {
+    dbPromise = (async () => {
+      const res = await fetch(MAIGRET_DB, { cache: "force-cache", signal: AbortSignal.timeout(10000) });
+      if (!res.ok) throw new Error(`Maigret DB HTTP ${res.status}`);
+      const db = await res.json() as MaigretDb;
+      return Object.entries(db.sites || {})
+        .filter(([, site]) => isUsernameSite(site))
+        .map(([name, site]) => ({ name, site }))
+        .sort((a, b) => (a.site.alexaRank ?? Number.MAX_SAFE_INTEGER) - (b.site.alexaRank ?? Number.MAX_SAFE_INTEGER) || a.name.localeCompare(b.name));
+    })();
+  }
+  return dbPromise;
+}
+
+function substitute(template: string, username: string) {
+  return template
+    .replaceAll("{username}", encodeURIComponent(username))
+    .replaceAll("{account}", encodeURIComponent(username))
+    .replaceAll("{}", encodeURIComponent(username));
+}
+
+function validForSite(username: string, regexCheck?: string) {
+  if (!regexCheck) return true;
+  try { return new RegExp(regexCheck).test(username); } catch { return false; }
+}
+
+function normalizeHtml(s: string) {
+  return s.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;|&amp;|&#39;|&quot;/g, " ").replace(/\s+/g, " ").trim();
+}
+
+async function probe(entry: SiteEntry, entity: Entity): Promise<AdapterResult | null> {
+  const { name, site } = entry;
+  if (!site.url || !validForSite(entity.normalized, site.regexCheck)) return null;
+  const profileUrl = substitute(site.url, entity.normalized);
+  const probeUrl = substitute(site.urlProbe || site.url, entity.normalized);
   try {
-    const res = await fetch(url, { headers: { "user-agent": UA, accept: "text/html" }, redirect: "follow", signal: AbortSignal.timeout(6500), cache: "no-store" });
-    if (res.status === 404 || res.status === 410) return null;
-    const text = (await res.text()).slice(0, 450_000);
-    const lower = text.toLowerCase();
-    if (missing.some((m) => lower.includes(m.toLowerCase()))) return null;
-    if (!res.ok && ![401, 403, 429].includes(res.status)) return null;
-    const title = text.match(/<title[^>]*>(.*?)<\/title>/is)?.[1]?.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-    const desc = text.match(/<meta[^>]+(?:name|property)=["'](?:description|og:description)["'][^>]+content=["']([^"']+)/i)?.[1];
-    const combined = `${title || ""} ${desc || ""}`;
+    const res = await fetch(probeUrl, {
+      headers: safeHeaders(site.headers),
+      redirect: "follow",
+      signal: AbortSignal.timeout(6500),
+      cache: "no-store",
+    });
+    const body = (await res.text()).slice(0, 500_000);
+    const lower = body.toLowerCase();
+    const present = (site.presenseStrs || []).map(String);
+    const absent = (site.absenceStrs || []).map(String);
+    let exists = false;
+
+    switch (site.checkType) {
+      case "status_code":
+        exists = res.status >= 200 && res.status < 400;
+        break;
+      case "response_url":
+        exists = res.ok && !absent.some((s) => res.url.toLowerCase().includes(s.toLowerCase()) || lower.includes(s.toLowerCase()));
+        break;
+      case "message":
+      default:
+        if (absent.some((s) => lower.includes(s.toLowerCase()))) exists = false;
+        else if (present.length) exists = present.some((s) => lower.includes(s.toLowerCase()));
+        else exists = res.status >= 200 && res.status < 400;
+        break;
+    }
+    if (!exists) return null;
+
+    const titleRaw = body.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "";
+    const descRaw = body.match(/<meta[^>]+(?:name|property)=["'](?:description|og:description)["'][^>]+content=["']([^"']+)/i)?.[1] || "";
+    const title = normalizeHtml(titleRaw).slice(0, 180);
+    const desc = normalizeHtml(descRaw).slice(0, 420);
+    const sample = normalizeHtml(`${titleRaw} ${descRaw} ${body.slice(0, 16000)}`).slice(0, 18000);
+    const source = `Maigret DB/${name}`;
+
     return {
-      entities: [...extractFromText(combined, `maigret-style:${name}`), ...extractFromUrl(url, `maigret-style:${name}`)],
-      findings: [{ title: title || `${name}: @${entity.normalized}`, url, snippet: desc || `Possible public profile for @${entity.normalized}`, source: `Maigret-style/${name}` }],
+      entities: [
+        ...extractFromText(sample, source),
+        ...extractFromUrl(profileUrl, source),
+      ],
+      findings: [{
+        title: title || `${name}: @${entity.normalized}`,
+        url: profileUrl,
+        snippet: desc || `Username ${entity.normalized} matched Maigret checks on ${name}.`,
+        source,
+      }],
     };
   } catch {
     return null;
   }
 }
 
+async function pooled<T, R>(items: T[], limit: number, worker: (item: T) => Promise<R>) {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  async function runner() {
+    while (true) {
+      const i = cursor++;
+      if (i >= items.length) return;
+      results[i] = await worker(items[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, runner));
+  return results;
+}
+
 export const usernameAdapter: Adapter = {
-  name: "Maigret-style Username",
+  name: "Maigret DB Username",
   supports: ["username"],
   async search(entity) {
-    const settled = await Promise.all(SITES.map((site) => probe(site.name, site.url(entity.normalized), site.missing, entity)));
-    return { entities: settled.flatMap((x) => x?.entities || []), findings: settled.flatMap((x) => x?.findings || []) };
+    let sites: SiteEntry[] = [];
+    try { sites = (await loadSites()).slice(0, SITE_LIMIT); } catch { return { entities: [], findings: [] }; }
+    const scanned = sites.filter(({ site }) => validForSite(entity.normalized, site.regexCheck));
+    const settled = await pooled(scanned, CONCURRENCY, (site) => probe(site, entity));
+    const matched = settled.filter((x): x is AdapterResult => Boolean(x));
+    return {
+      entities: matched.flatMap((x) => x.entities),
+      findings: [
+        { title: `Maigret coverage: ${scanned.length} sites checked`, url: MAIGRET_DB, snippet: `${matched.length} possible public profiles matched the upstream Maigret site rules.`, source: "Maigret DB" },
+        ...matched.flatMap((x) => x.findings),
+      ],
+    };
   },
 };
