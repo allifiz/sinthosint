@@ -9,6 +9,16 @@ import { domainAdapter } from "./adapters/domain";
 import { urlAdapter } from "./adapters/url";
 
 const ADAPTERS: Adapter[] = [usernameAdapter, indonesiaNameAdapter, indonesiaPhoneAdapter, emailAdapter, domainAdapter, urlAdapter];
+const SOFT_BUDGET_MS = 42000;
+const MIN_ADAPTER_BUDGET_MS = 7000;
+const PIVOT_LIMITS: Partial<Record<Entity["type"], number>> = {
+  username: 10,
+  name: 4,
+  phone: 6,
+  email: 6,
+  domain: 10,
+  url: 8,
+};
 
 function id(prefix: string) {
   return `${prefix}_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
@@ -25,15 +35,35 @@ export async function investigate(input: string, maxDepth = 2, maxEntities = 120
   const visited = new Set<string>();
   const entityMap = new Map<string, Entity>([[entityKey(seed.type, seed.normalized), seed]]);
   const usedAdapters = new Set<string>();
+  const pivotCounts = new Map<Entity["type"], number>();
+  let budgetReached = false;
 
-  while (queue.length && entities.length < maxEntities) {
+  outer: while (queue.length && entities.length < maxEntities) {
+    if (Date.now() - started >= SOFT_BUDGET_MS) {
+      budgetReached = true;
+      break;
+    }
+
     const current = queue.shift()!;
     const currentKey = entityKey(current.type, current.normalized);
     if (visited.has(currentKey) || current.depth > maxDepth) continue;
-    visited.add(currentKey);
 
+    if (current.depth > 0) {
+      const used = pivotCounts.get(current.type) || 0;
+      const limit = PIVOT_LIMITS[current.type] ?? 5;
+      if (used >= limit) continue;
+      pivotCounts.set(current.type, used + 1);
+    }
+
+    visited.add(currentKey);
     const adapters = ADAPTERS.filter((a) => a.supports.includes(current.type));
+
     for (const adapter of adapters) {
+      if (Date.now() - started >= SOFT_BUDGET_MS - MIN_ADAPTER_BUDGET_MS) {
+        budgetReached = true;
+        break outer;
+      }
+
       usedAdapters.add(adapter.name);
       let result;
       try { result = await adapter.search(current); } catch { continue; }
@@ -62,6 +92,17 @@ export async function investigate(input: string, maxDepth = 2, maxEntities = 120
         }
       }
     }
+  }
+
+  if (budgetReached && findings.length < 400) {
+    findings.push({
+      id: id("find"),
+      entityId: seed.id,
+      title: "Partial result returned before Vercel timeout",
+      url: "",
+      snippet: "The synchronous scan reached its runtime budget. Findings collected so far are preserved; deeper coverage should run through the upcoming batched job scanner.",
+      source: "SinthOSINT Runtime Guard",
+    });
   }
 
   return {
