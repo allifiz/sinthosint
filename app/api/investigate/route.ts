@@ -13,7 +13,7 @@ const schema = z.object({
 export async function POST(req: Request) {
   try {
     const body = schema.parse(await req.json());
-    const result = await investigate(body.query, body.maxDepth, 40);
+    const result = await investigate(body.query, body.maxDepth, 120);
     return NextResponse.json(result, { headers: { "cache-control": "no-store" } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid request";
