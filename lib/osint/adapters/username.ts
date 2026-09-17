@@ -4,7 +4,7 @@ import { extractFromText, extractFromUrl } from "../extractor";
 const UA = "Mozilla/5.0 (compatible; SinthOSINT/0.2; +https://github.com/allifiz/sinthosint)";
 const MAIGRET_DB = "https://raw.githubusercontent.com/soxoj/maigret/main/maigret/resources/data.json";
 const SITE_LIMIT = 320;
-const CONCURRENCY = 36;
+const CONCURRENCY = 64;
 const SAFE_HEADERS = new Set(["accept", "accept-language", "referer", "user-agent", "x-ig-app-id"]);
 
 type MaigretSite = {
@@ -47,7 +47,7 @@ function isUsernameSite(site: MaigretSite) {
 async function loadSites() {
   if (!dbPromise) {
     dbPromise = (async () => {
-      const res = await fetch(MAIGRET_DB, { cache: "force-cache", signal: AbortSignal.timeout(10000) });
+      const res = await fetch(MAIGRET_DB, { cache: "no-store", signal: AbortSignal.timeout(8000) });
       if (!res.ok) throw new Error(`Maigret DB HTTP ${res.status}`);
       const db = await res.json() as MaigretDb;
       return Object.entries(db.sites || {})
@@ -100,7 +100,7 @@ async function probe(entry: SiteEntry, entity: Entity): Promise<AdapterResult | 
     const res = await fetch(probeUrl, {
       headers: safeHeaders(site.headers),
       redirect: "follow",
-      signal: AbortSignal.timeout(6500),
+      signal: AbortSignal.timeout(3200),
       cache: "no-store",
     });
     const body = (await res.text()).slice(0, 500_000);
