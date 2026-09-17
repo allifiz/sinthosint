@@ -1,6 +1,6 @@
 import * as cheerio from "cheerio";
 
-const UA = "Mozilla/5.0 (compatible; SinthOSINT/0.2; +https://github.com/allifiz/sinthosint)";
+const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/142 Safari/537.36";
 export type SearchHit = { title: string; url: string; snippet: string; engine: string };
 
 function cleanDuckUrl(href: string) {
@@ -8,6 +8,16 @@ function cleanDuckUrl(href: string) {
     if (href.startsWith("//duckduckgo.com/l/?")) {
       const u = new URL(`https:${href}`);
       return decodeURIComponent(u.searchParams.get("uddg") || href);
+    }
+    return href;
+  } catch { return href; }
+}
+
+function cleanGoogleUrl(href: string) {
+  try {
+    if (href.startsWith("/url?")) {
+      const u = new URL(`https://www.google.com${href}`);
+      return u.searchParams.get("q") || href;
     }
     return href;
   } catch { return href; }
@@ -24,6 +34,26 @@ async function retryFetch(url: string, init: RequestInit, attempts = 2) {
     if (i + 1 < attempts) await new Promise((r) => setTimeout(r, 450 * (i + 1)));
   }
   return last;
+}
+
+async function google(query: string): Promise<SearchHit[]> {
+  const url = `https://www.google.com/search?num=20&hl=id&q=${encodeURIComponent(query)}`;
+  const res = await retryFetch(url, { headers: { "user-agent": UA, accept: "text/html", "accept-language": "id-ID,id;q=0.9,en;q=0.7" } });
+  if (!res?.ok) return [];
+  const $ = cheerio.load(await res.text());
+  const hits: SearchHit[] = [];
+  $("a").each((_, el) => {
+    const a = $(el);
+    const h3 = a.find("h3").first();
+    const href = a.attr("href");
+    if (!href || !h3.length) return;
+    const cleaned = cleanGoogleUrl(href);
+    if (!/^https?:\/\//.test(cleaned) || /google\./i.test(new URL(cleaned).hostname)) return;
+    const container = a.closest("div");
+    const snippet = container.parent().text().replace(/\s+/g, " ").trim().slice(0, 500);
+    hits.push({ title: h3.text().trim(), url: cleaned, snippet, engine: "Google" });
+  });
+  return hits.slice(0, 15);
 }
 
 async function ddg(query: string): Promise<SearchHit[]> {
@@ -56,8 +86,8 @@ async function bing(query: string): Promise<SearchHit[]> {
   return hits.slice(0, 15);
 }
 
-export async function searchWeb(query: string, max = 24): Promise<SearchHit[]> {
-  const settled = await Promise.allSettled([ddg(query), bing(query)]);
+export async function searchWeb(query: string, max = 36): Promise<SearchHit[]> {
+  const settled = await Promise.allSettled([google(query), ddg(query), bing(query)]);
   const merged = settled.flatMap((x) => x.status === "fulfilled" ? x.value : []);
   const seen = new Set<string>();
   return merged.filter((hit) => {
