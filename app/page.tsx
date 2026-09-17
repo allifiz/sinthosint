@@ -37,28 +37,28 @@ export default function Home() {
     <main>
       <section className="hero">
         <div className="orb orb-a" /><div className="orb orb-b" />
-        <nav><div className="brand"><span className="brand-mark"><Network size={18} /></span>Sinth<span>OSINT</span></div><div className="nav-pill"><CircleDot size={13} /> Indonesia-first · entity driven</div></nav>
+        <nav><div className="brand"><span className="brand-mark"><Network size={18} /></span>Sinth<span>OSINT</span></div><div className="nav-pill"><CircleDot size={13} /> Indonesia-first · deep entity pivots</div></nav>
         <div className="hero-copy">
-          <div className="eyebrow"><Sparkles size={14}/> PIVOT ENGINE FOR PUBLIC-SOURCE INTELLIGENCE</div>
-          <h1>Start with one clue.<br/><span>Follow every public thread.</span></h1>
-          <p>Masukkan username, nama, nomor Indonesia, email, domain, atau URL. SinthOSINT mendeteksi tipe entity, memilih adapter, lalu mem-pivot temuan baru secara otomatis.</p>
+          <div className="eyebrow"><Sparkles size={14}/> DEEP PIVOT ENGINE FOR PUBLIC-SOURCE INTELLIGENCE</div>
+          <h1>Start with one clue.<br/><span>Let every finding branch.</span></h1>
+          <p>Username dipindai memakai database rule Maigret, nama dan nomor dipivot lewat pencarian Indonesia, dan domain diperluas ke DNS, certificate transparency, RDAP, Wayback, serta metadata web.</p>
         </div>
         <form className="search-card" onSubmit={submit}>
           <Search size={21}/><input autoFocus value={query} onChange={(e)=>setQuery(e.target.value)} placeholder='username, "nama lengkap", +62…, email, domain…'/>
           <select value={depth} onChange={(e)=>setDepth(Number(e.target.value))} aria-label="Pivot depth"><option value={1}>Depth 1</option><option value={2}>Depth 2</option><option value={3}>Depth 3</option></select>
-          <button disabled={loading}>{loading ? <Activity className="spin" size={18}/> : <ChevronRight size={19}/>} {loading ? "Tracing" : "Investigate"}</button>
+          <button disabled={loading}>{loading ? <Activity className="spin" size={18}/> : <ChevronRight size={19}/>} {loading ? "Deep scanning" : "Investigate"}</button>
         </form>
         <div className="examples">Try <span>→</span>{examples.map((x)=><button key={x} onClick={()=>setQuery(x)}>{x}</button>)}</div>
         <div className="method-row">
-          <div><strong>USERNAME</strong><span>Maigret-style profile discovery</span></div>
-          <div><strong>NAME</strong><span>Indonesia-oriented public search</span></div>
-          <div><strong>+62 PHONE</strong><span>Normalization, provider & indexed mentions</span></div>
-          <div><strong>DOMAIN</strong><span>DNS, CT logs & RDAP pivots</span></div>
+          <div><strong>USERNAME</strong><span>Maigret DB-backed scan across hundreds of site rules</span></div>
+          <div><strong>NAME</strong><span>16 Indonesia-oriented social, official, education & business pivots</span></div>
+          <div><strong>+62 PHONE</strong><span>Number variants, provider inference & targeted indexed contexts</span></div>
+          <div><strong>DOMAIN</strong><span>DNS, CT, RDAP, Wayback & HTTP metadata</span></div>
         </div>
       </section>
 
       {error && <section className="status error">{error}</section>}
-      {loading && <section className="status"><div className="scanner"/><p>Following entities and public-source pivots…</p></section>}
+      {loading && <section className="status"><div className="scanner"/><p>Scanning hundreds of profile rules, collecting public traces, then recursively pivoting discovered entities…</p></section>}
 
       {result && <section className="results">
         <div className="summary-grid">
@@ -68,7 +68,7 @@ export default function Home() {
           <div className="summary-card"><span>Runtime</span><strong>{(result.stats.durationMs/1000).toFixed(1)}s</strong><em>{result.stats.visited} entities visited</em></div>
         </div>
 
-        <div className="section-head"><div><span>RELATIONSHIP MAP</span><h2>Entity graph</h2></div><p>Nodes discovered from one source are automatically eligible for the next matching adapter.</p></div>
+        <div className="section-head"><div><span>RELATIONSHIP MAP</span><h2>Entity graph</h2></div><p>A profile can yield a display name, email, phone, domain or another username; each becomes a new pivot automatically.</p></div>
         <InvestigationGraph entities={result.entities} relations={result.relations}/>
 
         <div className="content-grid">
@@ -83,7 +83,7 @@ export default function Home() {
         </div>
       </section>}
 
-      <footer><ShieldCheck size={15}/> Built for lawful public-source investigations. Correlation is evidence-weighted, not identity proof.</footer>
+      <footer><ShieldCheck size={15}/> Deep public-source correlation. Confidence is evidence weight, not identity proof.</footer>
     </main>
   );
 }
